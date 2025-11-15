@@ -48,16 +48,12 @@ export async function getSellerInfo(url: string) {
   }
 
   // Set filters: Buy It Now + New
-  // Open "Buying Format" menu
   const buyingFormatBtn = await page.$(
     'span.filter-menu-button:has-text("Buying Format") button'
   );
   if (buyingFormatBtn) {
     await buyingFormatBtn.click();
     await page.waitForTimeout(500);
-    const allListings = await page.$(
-      'span.filter-menu-button__text:has-text("All Listings")'
-    );
     const buyItNow = await page.$(
       'span.filter-menu-button__text:has-text("Buy It Now")'
     );
@@ -67,7 +63,6 @@ export async function getSellerInfo(url: string) {
     }
   }
 
-  // Open "Condition" menu
   const conditionBtn = await page.$(
     'span.filter-menu-button:has-text("Condition") button'
   );
@@ -118,8 +113,15 @@ export async function getSellerInfo(url: string) {
       })
   );
 
+  // Scrape store logo URL
+  const logoUrl = await page.$eval(
+    ".str-header__logo--wrapper img",
+    (img: HTMLImageElement) => img.src
+  );
+
   const result = {
     store_url: url,
+    store_logo: logoUrl,
     feedback: spans?.[0] ?? null,
     items_sold: parseCompact(spans?.[1] ?? null),
     followers: parseCompact(spans?.[2] ?? null),
@@ -129,6 +131,7 @@ export async function getSellerInfo(url: string) {
       items_sold: spans?.[1] ?? null,
       followers: spans?.[2] ?? null,
       first_10_items: first10Items,
+      store_logo: logoUrl,
     },
     last_checked: new Date().toISOString(),
   };
