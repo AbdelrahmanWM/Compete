@@ -1,0 +1,18 @@
+{
+  "credentials": {
+    "figmaAuth": {
+      "user_id_string": "1408140657845473218",
+      "user_id": 1408140657845473300,
+      "access_token": "figu_tth6QrzZ6-6RZw3YuAoqlJck4Tgxa5s5V1sP5kzp",
+      "token_type": "bearer",
+      "refresh_token": "figur_FJVLnX_x2pP8gC1uslxbAlen6PhUwpDftAE-egrsJFguJjxbovsbpw",
+      "expires_in": 7776000,
+      "oauth": true
+    },
+    "builderPublicKey": "50457f7ecd37457db4d6667d9faadd08",
+    "builderPrivateKey": "bpk-f7701d7451c2422ab33802b003a16712",
+    "spaceName": "souhaib w il bas ta3 tounES",
+    "userId": "iNSsFS33PzVu2VhAhAeudPCF7eF3",
+    "timestamp": "2025-11-15T04:34:15.521Z"
+  }
+}
