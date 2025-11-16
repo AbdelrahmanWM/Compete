@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import FunnelFlowGraph from "@/components/funnel-flow-graph"
+import { Spinner } from '@/components/ui/spinner'
 
 // Keep an internal mock for fallback or development
 const mockRun: FunnelRun = {
@@ -80,12 +81,16 @@ export default function AdFunnelsPage() {
   const [isLoadingCompetitors, setIsLoadingCompetitors] = useState<boolean>(false)
   // attempts removed: no retry behavior — single attempt only
   const abortControllerRef = React.useRef<AbortController | null>(null)
+  const [showPopover, setShowPopover] = useState(false)
+  const [popoverMessage, setPopoverMessage] = useState<string | null>(null)
+  const [attemptCount, setAttemptCount] = useState<number>(0)
 
   const handleCancel = () => {
     // signal cancellation
     abortControllerRef.current?.abort()
     setIsLoading(false)
     setError("Cancelled by user")
+    setShowPopover(false)
   }
 
   // cleanup on unmount: abort any in-flight request
@@ -99,7 +104,10 @@ export default function AdFunnelsPage() {
     e.preventDefault()
     setIsLoading(true)
     setError(null)
-    // single-shot run: no retry logic
+    // reset attempt counter and show popover
+    setAttemptCount(0)
+    setShowPopover(true)
+    setPopoverMessage('Please hold while the AI agent runs…')
 
     const comp = competitor || filter
     if (comp && !competitor) setCompetitor(comp)
@@ -109,40 +117,82 @@ export default function AdFunnelsPage() {
     const signal = abortControllerRef.current.signal
 
     try {
-      const res = await fetch("/api/ad-funnels", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ competitor: comp, query }),
-        signal,
-      })
+      // run with retries: up to 3 attempts. If an attempt fails with an 'invalid route' style
+      // failure we will retry and update the popover message.
+      const maxAttempts = 3
+      let attempt = 0
+      let lastError: any = null
 
-      if (!res.ok) {
-        const text = await res.text().catch(() => '(failed to read response body)')
-        console.error('Agent proxy returned non-ok:', res.status, text)
-        setError(`Agent error: ${res.status} ${text}`)
-        return
+      while (attempt < maxAttempts) {
+        attempt += 1
+        setAttemptCount(attempt)
+        // update popover message on retry
+        if (attempt === 1) setPopoverMessage('Please hold while the AI agent runs…')
+        else setPopoverMessage('First route was invalid — trying another route…')
+
+        const res = await fetch('/api/ad-funnels', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ competitor: comp, query }),
+          signal,
+        })
+
+        if (!res.ok) {
+          // read body to help debug
+          const text = await res.text().catch(() => '(failed to read response body)')
+          lastError = { status: res.status, body: text }
+          console.error('Agent proxy returned non-ok:', res.status, text)
+          // decide whether to retry: if server indicates route invalid (heuristic), retry
+          if (attempt < maxAttempts) {
+            // continue loop to retry
+            continue
+          } else {
+            setError(`Agent error: ${res.status} ${text}`)
+            break
+          }
+        }
+
+        const data = await res.json().catch((e) => {
+          lastError = e
+          console.error('Failed parsing agent response json:', e)
+          return null
+        })
+
+        if (!data) {
+          if (attempt < maxAttempts) continue
+          setError('Invalid agent response')
+          break
+        }
+
+        if (data && data.error) {
+          lastError = data.error
+          console.error('Agent returned error payload:', data)
+          // If first attempt failed, show retry message and loop to retry
+          if (attempt < maxAttempts) {
+            // continue to retry
+            continue
+          } else {
+            setError(typeof data.error === 'string' ? data.error : JSON.stringify(data.error))
+            break
+          }
+        }
+
+        // success
+        console.log('Agent proxy returned:', data)
+        setFunnelRun(data as FunnelRun)
+        lastError = null
+        break
       }
 
-      const data = await res.json().catch((e) => {
-        console.error('Failed parsing agent response json:', e)
-        setError('Invalid agent response')
-        return null
-      })
-
-      if (!data) return
-
-      if (data && data.error) {
-        console.error('Agent returned error payload:', data)
-        setError(typeof data.error === 'string' ? data.error : JSON.stringify(data.error))
-        return
+      if (lastError) {
+        // set a generic message if not already set
+        if (!error) setError(typeof lastError === 'string' ? lastError : JSON.stringify(lastError))
       }
-
-      // Single-shot: accept whatever the server returned (including fallback) and display it.
-      console.log('Agent proxy returned:', data)
-      setFunnelRun(data as FunnelRun)
     } catch (fetchErr: any) {
       if (fetchErr?.name === 'AbortError') {
         // cancelled by user — handleCancel already sets the UI state
+        setPopoverMessage(null)
+        setShowPopover(false)
         return
       }
       console.error('Network error calling agent proxy:', fetchErr)
@@ -150,6 +200,9 @@ export default function AdFunnelsPage() {
     } finally {
       setIsLoading(false)
       abortControllerRef.current = null
+      // hide popover after finished or error
+      setPopoverMessage(null)
+      setShowPopover(false)
     }
   }
 
@@ -210,7 +263,7 @@ export default function AdFunnelsPage() {
       </div>
 
       <form onSubmit={handleRun} className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div>
+        <div className="relative">
           <Label htmlFor="competitor-search" className="sr-only">Competitor</Label>
           <Input
             id="competitor-search"
@@ -222,7 +275,7 @@ export default function AdFunnelsPage() {
 
           {/* Dropdown */}
           {filter.length > 0 && (!competitor || filter !== competitor) && (
-            <div className="mt-1 max-h-40 overflow-y-auto rounded-md border border-border bg-card p-2">
+            <div className="absolute left-0 right-0 z-50 mt-1 w-full max-h-40 overflow-y-auto rounded-md border border-border bg-card p-2 shadow-lg">
               {isLoadingCompetitors ? (
                 <div className="flex items-center gap-2 px-2 py-3 text-sm text-muted-foreground">
                   <span>Loading competitors…</span>
@@ -275,6 +328,22 @@ export default function AdFunnelsPage() {
           )}
         </div>
       </form>
+
+      {/* Popover overlay shown while agent runs */}
+      {showPopover && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-card p-6 rounded-md flex flex-col items-center gap-3">
+            <Spinner className="h-8 w-8 text-foreground" />
+            <div className="text-sm font-medium">{popoverMessage}</div>
+            {attemptCount > 0 && <div className="text-xs text-muted-foreground">Attempt {attemptCount} of 3</div>}
+            <div className="pt-2">
+              <Button type="button" variant="outline" onClick={handleCancel}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className="mt-3 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
