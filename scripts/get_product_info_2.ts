@@ -47,9 +47,7 @@ export async function scrapeEbayProduct(itemUrl: string) {
         timeout: MAX_TIMEOUT,
       });
       await page
-        .waitForSelector("h1[itemprop='name']", {
-          timeout: SELECTOR_TIMEOUT,
-        })
+        .waitForSelector("h1[itemprop='name']", { timeout: SELECTOR_TIMEOUT })
         .catch(() => console.warn("⚠ Title selector not found, continuing..."));
     } catch {
       console.warn("⚠ Navigation timeout, continuing anyway…");
@@ -91,7 +89,6 @@ export async function scrapeEbayProduct(itemUrl: string) {
     }
 
     // --- SCRAPE FIELDS ---
-
     const title =
       (await page
         .$eval("h1[itemprop='name']", (el: Element) => el.textContent?.trim())
@@ -131,7 +128,10 @@ export async function scrapeEbayProduct(itemUrl: string) {
 
     const shippingStr =
       (await page
-        .$eval("span[data-testid='shipping-cost']", (el: Element) => el.textContent)
+        .$eval(
+          "span[data-testid='shipping-cost']",
+          (el: Element) => el.textContent
+        )
         .catch(() => null)) ||
       (await page
         .$eval(
@@ -152,7 +152,9 @@ export async function scrapeEbayProduct(itemUrl: string) {
         )
         .catch(() => null)) ||
       (await page
-        .$eval('div[itemprop="itemCondition"]', (el: Element) => el.textContent?.trim())
+        .$eval('div[itemprop="itemCondition"]', (el: Element) =>
+          el.textContent?.trim()
+        )
         .catch(() => null));
 
     const quantityAvailable =
@@ -173,20 +175,15 @@ export async function scrapeEbayProduct(itemUrl: string) {
 
     const totalSold =
       (await page
-        .$eval('span[itemprop="soldQuantity"]', (el: Element) => {
-          const match = (el.textContent || "").match(/[\d,]+/);
+        .$eval("#qtyAvailability", (el: HTMLElement) => {
+          const soldSpan = Array.from(el.querySelectorAll("span")).find((s) =>
+            s.textContent?.toLowerCase().includes("sold")
+          );
+          if (!soldSpan) return null;
+          const match = soldSpan.textContent?.match(/[\d,]+/);
           return match ? Number(match[0].replace(/,/g, "")) : null;
         })
-        .catch(() => null)) ||
-      (await page
-        .$eval(
-          'div[data-testid="x-quantity"] span.ux-textspans--BOLD',
-          (el: Element) => {
-            const match = (el.textContent || "").match(/\d+/);
-            return match ? Number(match[0]) : null;
-          }
-        )
-        .catch(() => null));
+        .catch(() => null)) || null;
 
     const image =
       (await page
@@ -198,7 +195,7 @@ export async function scrapeEbayProduct(itemUrl: string) {
         )
         .catch(() => null));
 
-    // ⭐ NEW FIELD 1: Last 24h signal (raw text)
+    // --- LAST 24 HOURS ---
     const last24hoursText = await page
       .$eval(
         'div[data-testid="x-ebay-signal"] .ux-textspans',
@@ -206,7 +203,7 @@ export async function scrapeEbayProduct(itemUrl: string) {
       )
       .catch(() => null);
 
-    // ⭐ NEW FIELD 2: Watchers count (raw number inside button)
+    // --- WATCHERS ---
     const watchersCount = await page
       .$eval("button.x-watch-heart-btn span.x-watch-heart-btn-text", (el) => {
         const t = el.textContent?.trim() || "";
@@ -215,26 +212,58 @@ export async function scrapeEbayProduct(itemUrl: string) {
       })
       .catch(() => null);
 
+    // --- DISCOUNT & ORIGINAL PRICE LOGIC ---
+    const originalPriceStr = await page
+      .$eval(
+        "span.ux-textspans--STRIKETHROUGH",
+        (el: Element) => el.textContent?.trim() || null
+      )
+      .catch(() => null);
+
+    const discountPercentStr = await page
+      .$eval(
+        "span.x-price-transparency--discount span.ux-textspans--SECONDARY:nth-child(4)",
+        (el: Element) => el.textContent?.trim() || null
+      )
+      .catch(() => null);
+
+    const currentPrice = price ?? null;
+    let originalPrice: number;
+    let discountPercent: number;
+
+    if (originalPriceStr && discountPercentStr) {
+      const matchOrig = originalPriceStr.replace(/,/g, "").match(/[\d.]+/);
+      originalPrice = matchOrig ? Number(matchOrig[0]) : currentPrice;
+
+      const matchDisc = discountPercentStr.match(/(\d+)%/);
+      discountPercent = matchDisc ? Number(matchDisc[1]) : 0;
+    } else {
+      originalPrice = currentPrice;
+      discountPercent = 0;
+    }
+
     const result = {
       product: {
         title,
         ebay_item_id: itemUrl.split("/itm/")[1]?.split("/")[0] || null,
         product_url: itemUrl,
         price,
+        currentPrice,
+        originalPrice,
+        discountPercent,
         currency,
         shipping_cost,
         condition,
         quantity_available: quantityAvailable,
         total_sold_listing: totalSold,
-        last_24_hours: last24hoursText, // ⭐ TEXT ONLY
-        watchers_count: watchersCount, // ⭐ NUMBER
+        last_24_hours: last24hoursText,
+        watchers_count: watchersCount,
         images: image ? [image] : [],
       },
       timestamp: new Date().toISOString(),
     };
 
     console.log("✅ Product scrape complete:", result);
-
     return result;
   } catch (error) {
     console.error("❌ Error during scraping:", error);
@@ -243,7 +272,6 @@ export async function scrapeEbayProduct(itemUrl: string) {
     try {
       if (browser) await browser.close();
     } catch {}
-
     try {
       await sdk.endSession();
     } catch {}

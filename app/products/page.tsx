@@ -17,6 +17,10 @@ export type Product = {
   name: string;
   competitor: string;
   currentPrice: number;
+  currency?: string;
+  ebay_item_id?: string;
+  shipping_cost?: number;
+  images?: string[];
   originalPrice?: number;
   stock: "In Stock" | "Low Stock" | "Out of Stock";
   rating: number;
@@ -27,6 +31,9 @@ export type Product = {
   priceHistory: number[];
   last_24_hours: string; // ⭐ TEXT ONLY
   watchers_count: number; // ⭐ NUMBER
+  condition?: string;
+  quantity_available?: number;
+  total_sold_listing?: number;
   category: string;
   lastUpdated: string;
   description: string;
@@ -320,6 +327,7 @@ export default function ProductsPage() {
         <ProductModal
           product={selectedProduct}
           onClose={() => setSelectedProduct(null)}
+          onDelete={handleAddProductSuccess}
         />
       )}
 
