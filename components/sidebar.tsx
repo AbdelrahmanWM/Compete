@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils'
 import { useAuth } from '@/lib/auth-context'
 import { getAuth, signOut } from 'firebase/auth'
 
-const navItems = [
+const navItems: { label: string; href: string; icon: any; badge?: string }[] = [
   {
     label: 'Market Dashboard',
     href: '/',
@@ -22,13 +22,11 @@ const navItems = [
     label: 'Competitors',
     href: '/competitors',
     icon: Users,
-    badge: '47'
   },
   {
     label: 'Products',
     href: '/products',
     icon: Package,
-    badge: '1.2K'
   },
   {
     label: 'Trends',
@@ -39,7 +37,6 @@ const navItems = [
     label: 'Alerts',
     href: '/alerts',
     icon: Bell,
-    badge: '23'
   },
   {
     label: 'Ad Funnels',

@@ -157,10 +157,7 @@ export default function AlertsPage() {
               {alerts.filter(a => a.status === 'active').length}
             </div>
           </div>
-          <div className="rounded-lg border border-border bg-card p-4">
-            <div className="text-sm text-muted-foreground">Triggered Today</div>
-            <div className="mt-1 text-2xl font-bold text-purple-500">3</div>
-          </div>
+          
           <div className="rounded-lg border border-border bg-card p-4">
             <div className="text-sm text-muted-foreground">Paused</div>
             <div className="mt-1 text-2xl font-bold text-muted-foreground">
