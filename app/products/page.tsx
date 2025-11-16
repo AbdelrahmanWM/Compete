@@ -11,6 +11,7 @@ import ProductFilterSidebar from "@/components/product-filter-sidebar";
 import PillFilters from "@/components/pill-filters";
 import SortDropdown from "@/components/sort-dropdown";
 import AddProductModal from "@/components/ui/add-product-modal";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 export type Product = {
   id: string;
@@ -67,13 +68,15 @@ export default function ProductsPage() {
     discounted: false,
     rating4Plus: false,
   });
-
+  const { user, token, loading: authLoading } = useCurrentUser();
   // Fetch products from API
   useEffect(() => {
     const fetchProducts = async () => {
       try {
         setIsLoading(true);
-        const response = await fetch("/api/products");
+        const response = await fetch("/api/products", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
 
         if (!response.ok) {
           throw new Error("Failed to fetch products");
@@ -91,14 +94,22 @@ export default function ProductsPage() {
     };
 
     fetchProducts();
-  }, []);
-
-  // Fetch competitors for filters
+  }, [authLoading, user, token]);
+  
   useEffect(() => {
+    if (authLoading || !user || !token) return; // wait until user & token are ready
+
     const fetchCompetitors = async () => {
       try {
-        const res = await fetch("/api/competitors");
-        if (!res.ok) return;
+        const res = await fetch("/api/competitors", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (!res.ok) {
+          console.error("Failed to fetch competitors:", res.status);
+          return;
+        }
+
         const json = await res.json();
         if (json && Array.isArray(json.data)) {
           const names = json.data.map((c: any) => c.name).filter(Boolean);
@@ -110,7 +121,8 @@ export default function ProductsPage() {
     };
 
     fetchCompetitors();
-  }, []);
+  }, [authLoading, user, token]);
+
 
   // Filter and sort products
   const filteredProducts = products.filter((product) => {

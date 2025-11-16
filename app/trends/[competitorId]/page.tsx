@@ -8,6 +8,7 @@ import { ArrowLeft, RefreshCw, ChevronDown } from "lucide-react";
 import CompetitorStats from "@/components/CompetitorStats";
 import ProductStats from "@/components/ProductStats";
 import { Competitor } from "@/app/interfaces/Competitor";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 export default function CompetitorTrendsPage() {
   const params = useParams();
@@ -21,7 +22,7 @@ export default function CompetitorTrendsPage() {
   const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
   const [showDropdown, setShowDropdown] = useState(false);
   const [productNames, setProductNames] = useState<string[]>([]);
-
+  const { user, token, loading: authLoading } = useCurrentUser();
   // Fetch single competitor data by ID
   useEffect(() => {
     const fetchCompetitor = async () => {
@@ -29,7 +30,9 @@ export default function CompetitorTrendsPage() {
 
       setIsLoading(true);
       try {
-        const response = await fetch(`/api/competitors/${competitorId}`);
+        const response = await fetch(`/api/competitors/${competitorId}`, { headers: {
+          Authorization: `Bearer ${token}`,
+        }, });
         if (response.ok) {
           const result = await response.json();
           if (result.data) {
@@ -38,7 +41,9 @@ export default function CompetitorTrendsPage() {
             // Fetch products for this competitor
             const products = await fetch(
               "/api/products?seller=" +
-                encodeURIComponent(result.data.name || "")
+                encodeURIComponent(result.data.name || ""), { headers: {
+                  Authorization: `Bearer ${token}`,
+                }, }
             );
             const productsResult = await products.json();
             const tempProductNames = productsResult.data.map(
@@ -57,7 +62,7 @@ export default function CompetitorTrendsPage() {
     };
 
     fetchCompetitor();
-  }, [competitorId]);
+  }, [competitorId, user, authLoading, token]);
 
   const refreshData = useCallback(async () => {
     if (!competitor?.storeUrl) return;

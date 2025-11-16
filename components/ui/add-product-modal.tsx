@@ -5,17 +5,12 @@ import { X, Plus, Loader } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 interface AddProductModalProps {
   open: boolean;
   onClose: () => void;
   onSuccess?: () => void;
-}
-
-interface Competitor {
-  id: string;
-  name: string;
-  logo?: string;
 }
 
 export default function AddProductModal({
@@ -35,36 +30,41 @@ export default function AddProductModal({
   const [selectedTopItem, setSelectedTopItem] = useState<string>("manual");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [competitors, setCompetitors] = useState<Competitor[]>([]);
+  const [competitors, setCompetitors] = useState<string[]>([]);
   const [isLoadingCompetitors, setIsLoadingCompetitors] = useState(false);
 
-  // Fetch competitors from database
+  const { user, token, loading: authLoading } = useCurrentUser();
+
   useEffect(() => {
-    if (open) {
-      const fetchCompetitors = async () => {
-        try {
-          setIsLoadingCompetitors(true);
-          const response = await fetch("/api/competitors");
+    if (authLoading || !user || !token) return; // wait until user & token are ready
 
-          if (!response.ok) {
-            throw new Error("Failed to fetch competitors");
-          }
+    const fetchCompetitors = async () => {
+      setIsLoadingCompetitors(true);
+      try {
+        const res = await fetch("/api/competitors", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
 
-          const result = await response.json();
-          if (result.success && result.data) {
-            setCompetitors(result.data);
-          }
-        } catch (error) {
-          console.error("Error fetching competitors:", error);
-          setError("Failed to load competitors. Please try again.");
-        } finally {
-          setIsLoadingCompetitors(false);
+        if (!res.ok) {
+          console.error("Failed to fetch competitors:", res.status);
+          return;
         }
-      };
 
-      fetchCompetitors();
-    }
-  }, [open]);
+        const json = await res.json();
+        if (json && Array.isArray(json.data)) {
+          // store competitors as strings
+          const names = json.data.map((c: any) => c.name).filter(Boolean);
+          setCompetitors(names);
+        }
+      } catch (err) {
+        console.error("Error fetching competitors:", err);
+      } finally {
+        setIsLoadingCompetitors(false);
+      }
+    };
+
+    fetchCompetitors();
+  }, [authLoading, user, token, open]);
 
   const reset = () => {
     setStep(1);
@@ -73,6 +73,8 @@ export default function AddProductModal({
     setProductUrl("");
     setError(null);
     setIsSubmitting(false);
+    setTopItems([]);
+    setSelectedTopItem("manual");
   };
 
   const handleClose = () => {
@@ -83,8 +85,9 @@ export default function AddProductModal({
 
   if (!open) return null;
 
+  // ✅ fix here: competitors are strings now
   const filtered = competitors.filter((comp) =>
-    comp.name.toLowerCase().includes(filter.toLowerCase())
+    comp.toLowerCase().includes(filter.toLowerCase())
   );
 
   const validateUrl = (urlString: string) => {
@@ -100,18 +103,7 @@ export default function AddProductModal({
     setSelectedCompetitor(compName);
     setStep(2);
     setError(null);
-
-    // populate top items synchronously from already-fetched competitors
-    const comp = competitors.find((c) => c.name === compName);
-    if (comp && Array.isArray((comp as any).firstTenItems)) {
-      const items = (comp as any).firstTenItems.map((it: any) => ({
-        title: it.title,
-        link: it.link,
-      }));
-      setTopItems(items);
-    } else {
-      setTopItems([]);
-    }
+    setTopItems([]); // clear top items for now
     setSelectedTopItem("manual");
     setProductUrl("");
   };
@@ -138,11 +130,9 @@ export default function AddProductModal({
     setIsSubmitting(true);
 
     try {
-      // Pass competitor name and productUrl directly to the products endpoint
-      // The backend will handle scraping internally
       const saveRes = await fetch("/api/products", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           competitor: selectedCompetitor,
           productUrl: productUrl.trim(),
@@ -229,12 +219,10 @@ export default function AddProductModal({
                     <button
                       key={idx}
                       type="button"
-                      onClick={() => handleSelectCompetitor(comp.name)}
+                      onClick={() => handleSelectCompetitor(comp)}
                       className="text-left rounded-lg border border-border p-3 hover:border-primary/50 transition-colors"
                     >
-                      <div className="font-medium text-foreground">
-                        {comp.name}
-                      </div>
+                      <div className="font-medium text-foreground">{comp}</div>
                     </button>
                   ))}
                 </div>
@@ -253,61 +241,6 @@ export default function AddProductModal({
 
               <div>
                 <Label htmlFor="product-url">Product URL</Label>
-                {topItems.length > 0 && (
-                  <div className="mt-3">
-                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                      Select from top products
-                    </div>
-                    <div className="space-y-1 max-h-56 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedTopItem("manual");
-                          setProductUrl("");
-                        }}
-                        disabled={isSubmitting}
-                        className={`w-full text-left p-3 rounded-lg border-2 transition-all ${
-                          selectedTopItem === "manual"
-                            ? "border-primary bg-primary/10 text-foreground font-semibold"
-                            : "border-border bg-muted/30 hover:bg-muted/50 text-foreground"
-                        }`}
-                      >
-                        <div className="text-sm">✏️ Manual URL</div>
-                      </button>
-
-                      <div className="h-px bg-border my-1"></div>
-
-                      {topItems.map((it, idx) => (
-                        <button
-                          key={idx}
-                          type="button"
-                          onClick={() => {
-                            setSelectedTopItem(it.link);
-                            setProductUrl(it.link);
-                          }}
-                          disabled={isSubmitting}
-                          className={`w-full text-left p-3 rounded-lg border-2 transition-all ${
-                            selectedTopItem === it.link
-                              ? "border-primary bg-primary/10 shadow-md"
-                              : "border-transparent bg-muted/20 hover:bg-muted/40 hover:border-border/50"
-                          }`}
-                        >
-                          <div className="flex items-start gap-2">
-                            <span className="text-xs font-bold text-primary flex-shrink-0 mt-0.5">
-                              {idx + 1}
-                            </span>
-                            <div className="flex-1 min-w-0">
-                              <div className="font-medium text-sm truncate leading-tight">
-                                {it.title}
-                              </div>
-                            </div>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
                 <Input
                   id="product-url"
                   placeholder="https://www.ebay.ca/itm/..."
@@ -320,7 +253,7 @@ export default function AddProductModal({
                   className="mt-3"
                 />
                 <p className="text-xs text-muted-foreground mt-2">
-                  Pick a top product or paste a custom URL
+                  Paste the product URL
                 </p>
               </div>
 

@@ -1,67 +1,51 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/mongodb";
 import { scrapeEbayProduct } from "@/scripts/get_product_info_2";
+import { getUserFromRequest } from "@/lib/getUserFromRequest";
 
 export const runtime = "nodejs";
 
 // GET - Fetch all products
+// GET - Fetch products for logged-in user only
 export async function GET(request: NextRequest) {
   try {
+    // ⭐ Get authenticated user
+    const userId = await getUserFromRequest(request);
+
+    if (!userId) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
     const db = await getDb();
     const collection = db.collection("products");
 
+    // ⭐ Return ONLY products for this user
     const products = await collection
-      .find({})
+      .find({ userId }) // IMPORTANT!!
       .sort({ createdAt: -1 })
       .toArray();
 
-    // Transform MongoDB documents to match the frontend Product type
-    const formattedProducts = products.map((product) => ({
-      id: product._id.toString(),
-      name: product.name || product.title || "Unknown Product",
-      competitor: product.competitor || "Unknown",
-      currentPrice: product.currentPrice || product.price || 0,
-      originalPrice: product.originalPrice || null,
-      stock: product.stock || determineStockStatus(product.quantity_available),
-      rating: product.rating || 0,
-      reviewCount: product.reviewCount || product.total_sold_listing || 0,
-      isDiscounted: product.isDiscounted || false,
-      discountPercent: product.discountPercent || null,
-      image:
-        product.image ||
-        (product.images && product.images[0]) ||
-        "/placeholder.svg",
-      images: product.images || [],
-      ebay_item_id: product.ebay_item_id || null,
-      currency: product.currency || null,
-      shipping_cost: product.shipping_cost || null,
-      condition: product.condition || null,
-      quantity_available: product.quantity_available ?? null,
-      total_sold_listing: product.total_sold_listing ?? null,
-      priceHistory: product.priceHistory || [
-        product.currentPrice || product.price || 0,
-      ],
-      last_24_hours: product.last_24_hours || "No Info", // ⭐ TEXT ONLY
-      watchers_count: product.watchers_count || 0, // ⭐ NUMBER
-      category: product.category || "Uncategorized",
-      lastUpdated:
-        product.lastUpdated || product.timestamp || new Date().toISOString(),
-      description: product.description || "",
-      product_url: product.product_url || "",
-      currentSnapshot: product.currentSnapshot || null,
-      pastSnapshots: product.pastSnapshots || [],
+    // Convert Mongo _id to string
+    const formatted = products.map((p) => ({
+      ...p,
+      _id: p._id.toString(),
     }));
 
     return NextResponse.json({
       success: true,
-      data: formattedProducts,
+      data: formatted,
     });
   } catch (error) {
     console.error("Error fetching products:", error);
     return NextResponse.json(
       {
         error:
-          error instanceof Error ? error.message : "Failed to fetch products",
+          error instanceof Error
+            ? error.message
+            : "Failed to fetch products",
       },
       { status: 500 }
     );
@@ -71,6 +55,16 @@ export async function GET(request: NextRequest) {
 // POST - Create a new product
 export async function POST(request: NextRequest) {
   try {
+    // ⭐ Get userId from your auth helper
+    const userId = await getUserFromRequest(request);
+
+    if (!userId) {
+      return NextResponse.json(
+        { error: "Unauthorized: userId missing or invalid" },
+        { status: 401 }
+      );
+    }
+
     const body = await request.json();
     const { competitor, productUrl, scrapedData } = body;
 
@@ -83,14 +77,13 @@ export async function POST(request: NextRequest) {
 
     let scraped: any;
 
-    // If scrapedData is provided, use it; otherwise scrape from productUrl
-    if (scrapedData && scrapedData.product) {
+    // Use provided scrapedData OR scrape from URL
+    if (scrapedData?.product) {
       scraped = scrapedData.product;
     } else if (productUrl) {
-      // Scrape the product using get_product_info_2
       const scrapeResult = await scrapeEbayProduct(productUrl);
 
-      if (!scrapeResult || !scrapeResult.product) {
+      if (!scrapeResult?.product) {
         return NextResponse.json(
           {
             error:
@@ -103,19 +96,20 @@ export async function POST(request: NextRequest) {
       scraped = scrapeResult.product;
     } else {
       return NextResponse.json(
-        { error: "Missing required field: productUrl or scrapedData" },
+        { error: "Missing productUrl or scrapedData" },
         { status: 400 }
       );
     }
 
-    // Determine stock status
+    // Determine stock
     const stockStatus = determineStockStatus(scraped.quantity_available);
 
-    // Calculate discount if original price exists
+    // Determine discount
     const isDiscounted =
       scraped.originalPrice && scraped.price
         ? scraped.originalPrice > scraped.price
         : false;
+
     const discountPercent =
       isDiscounted && scraped.originalPrice && scraped.price
         ? Math.round(
@@ -124,7 +118,7 @@ export async function POST(request: NextRequest) {
           )
         : null;
 
-    // Create current snapshot
+    // Current snapshot
     const nowSnap = {
       price: scraped.price || 0,
       quantity_available: scraped.quantity_available,
@@ -135,9 +129,10 @@ export async function POST(request: NextRequest) {
       timestamp: new Date(),
     };
 
-    // Prepare product document
+    // New product document
     const product = {
-      competitor: competitor,
+      userId, // ⭐ Attach userId
+      competitor,
       name: scraped.title || scraped.name || "Unknown Product",
       title: scraped.title,
       ebay_item_id: scraped.ebay_item_id,
@@ -153,11 +148,11 @@ export async function POST(request: NextRequest) {
       stock: stockStatus,
       rating: scraped.rating || 0,
       reviewCount: scraped.total_sold_listing || scraped.review_count || 0,
-      isDiscounted: isDiscounted,
-      discountPercent: discountPercent,
-      image: scraped.images && scraped.images[0] ? scraped.images[0] : null,
+      isDiscounted,
+      discountPercent,
+      image: scraped.images?.[0] || null,
       images: scraped.images || [],
-      last_24_hours: scraped.last_24_hours, // ⭐ TEXT ONLY
+      last_24_hours: scraped.last_24_hours,
       watchers_count: scraped.watchers_count,
       category: scraped.category || "Uncategorized",
       description: scraped.description || "",
@@ -170,12 +165,13 @@ export async function POST(request: NextRequest) {
       pastSnapshots: [],
     };
 
-    // Save to MongoDB
+    // DB Setup
     const db = await getDb();
     const collection = db.collection("products");
 
-    // Check if product already exists by product_url or ebay_item_id
+    // Check if product already exists for this user
     const existing = await collection.findOne({
+      userId, // ⭐ only find this user's products
       $or: [
         { product_url: product.product_url },
         { ebay_item_id: product.ebay_item_id },
@@ -183,13 +179,14 @@ export async function POST(request: NextRequest) {
     });
 
     if (existing) {
-      // Update existing product — move old snapshot to pastSnapshots
+      // Move current snapshot → past snapshots
       const pastSnapshots = existing.pastSnapshots || [];
-      if (existing.currentSnapshot)
+      if (existing.currentSnapshot) {
         pastSnapshots.unshift(existing.currentSnapshot);
+      }
       const limitedSnapshots = pastSnapshots.slice(0, 7);
 
-      // Update existing product
+      // Update product
       await collection.updateOne(
         { _id: existing._id },
         {
@@ -202,7 +199,7 @@ export async function POST(request: NextRequest) {
           $push: {
             priceHistory: {
               $each: [product.currentPrice],
-              $slice: -30, // Keep last 30 price points
+              $slice: -30,
             },
           } as any,
         }
@@ -211,31 +208,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         message: "Product updated successfully",
-        data: {
-          id: existing._id.toString(),
-          ...product,
-        },
-      });
-    } else {
-      // Insert new product
-      const result = await collection.insertOne(product);
-
-      return NextResponse.json({
-        success: true,
-        message: "Product added successfully",
-        data: {
-          id: result.insertedId.toString(),
-          ...product,
-        },
+        data: { id: existing._id.toString(), ...product },
       });
     }
-  } catch (error) {
+
+    // Insert new product
+    const result = await collection.insertOne(product);
+
+    return NextResponse.json({
+      success: true,
+      message: "Product added successfully",
+      data: {
+        id: result.insertedId.toString(),
+        ...product,
+      },
+    });
+  } catch (error: any) {
     console.error("Error creating product:", error);
     return NextResponse.json(
-      {
-        error:
-          error instanceof Error ? error.message : "Failed to create product",
-      },
+      { error: error?.message || "Failed to create product" },
       { status: 500 }
     );
   }

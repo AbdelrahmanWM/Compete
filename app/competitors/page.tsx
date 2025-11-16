@@ -15,7 +15,7 @@ import { CompetitorTable } from "@/components/competitor-table";
 import { CompetitorModal } from "@/components/competitor-modal";
 import { AddCompetitorModal } from "@/components/add-competitor-modal";
 import { FilterSidebar } from "@/components/filter-sidebar";
-import { getAuth, onAuthStateChanged, User } from "firebase/auth";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 
 import { Competitor } from "@/app/interfaces/Competitor";
@@ -27,37 +27,6 @@ type SortOption =
   | "promotion"
   | "products";
 
-// ---------------------- 🔑 Custom hook ----------------------
-const useCurrentUser = () => {
-  const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const auth = getAuth();
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        setUser(firebaseUser);
-
-        // IMPORTANT: DO NOT force-refresh
-        const idToken = await firebaseUser.getIdToken();
-        setToken(idToken);
-      } else {
-        setUser(null);
-        setToken(null);
-      }
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, []);
-
-  return { user, token, loading };
-};
-
-
-
-// ---------------------- 🏆 Main Page ----------------------
 export default function CompetitorsPage() {
   const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
   const [searchQuery, setSearchQuery] = useState("");
@@ -373,8 +342,8 @@ export default function CompetitorsPage() {
       <AddCompetitorModal
         isOpen={showAddModal}
         onClose={() => setShowAddModal(false)}
-        onAdd={handleAddCompetitor}
         isLoading={isAddingCompetitor}
+        token = {stableToken!}
       />
     </div>
   );

@@ -5,17 +5,21 @@ import Link from 'next/link'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { TrendingUp, ChartLine } from 'lucide-react'
-
+import { useCurrentUser } from '@/hooks/useCurrentUser';
 
 
 export default function TrendsPage() {
   const [competitors, setCompetitors] = useState<Competitor[]>([])
   const [isLoading, setIsLoading] = useState(true)
-
+  const { user, token, loading: authLoading } = useCurrentUser();
   useEffect(() => {
     const fetchCompetitors = async () => {
       try {
-        const response = await fetch('/api/competitors')
+        const response = await fetch('/api/competitors', {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        })
         if (response.ok) {
           const result = await response.json()
           if (result.data) {
@@ -31,7 +35,7 @@ export default function TrendsPage() {
     }
 
     fetchCompetitors()
-  }, [])
+  }, [user, authLoading, token])
 
   if (isLoading) {
     return (

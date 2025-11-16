@@ -2,24 +2,25 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/mongodb";
 import { ObjectId } from "mongodb";
 import { getSellerInfo } from "@/scripts/get_seller_info";
+import { getUserFromRequest } from "@/lib/getUserFromRequest";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    // const userId = await getUserFromRequest(request);
-    // if (!userId)
-    //   return NextResponse.json(
-    //     { error: "Unauthorized" },
-    //     { status: 401 }
-    //   );
+    const userId = await getUserFromRequest(request);
+    if (!userId)
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
 
     const db = await getDb();
     const collection = db.collection("competitors");
 
     // Only get competitors for this user 🔥
     const competitors = await collection
-      .find({  })
+      .find({ userId: userId} ) // ✅ filter by userId
       .sort({ createdAt: -1 })
       .toArray();
 
@@ -40,6 +41,7 @@ export async function GET() {
     );
   }
 }
+
 // PATCH - Refresh competitor information and store snapshot history
 export async function PATCH(request: NextRequest) {
   try {

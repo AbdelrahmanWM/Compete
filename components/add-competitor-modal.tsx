@@ -19,11 +19,16 @@ interface SellerInfo {
 interface AddCompetitorModalProps {
   isOpen: boolean
   onClose: () => void
-  onAdd: (url: string, sellerInfo?: SellerInfo) => void
   isLoading?: boolean
+  token: string // ✅ pass token here
 }
 
-export function AddCompetitorModal({ isOpen, onClose, onAdd, isLoading = false }: AddCompetitorModalProps) {
+export function AddCompetitorModal({
+  isOpen,
+  onClose,
+  isLoading = false,
+  token
+}: AddCompetitorModalProps) {
   const [url, setUrl] = useState("")
   const [error, setError] = useState("")
   const [isFetching, setIsFetching] = useState(false)
@@ -60,7 +65,10 @@ export function AddCompetitorModal({ isOpen, onClose, onAdd, isLoading = false }
     try {
       const response = await fetch("/api/competitors/add", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`, // ✅ use passed token
+        },
         body: JSON.stringify({ url: urlWithProtocol }),
       })
 
@@ -72,10 +80,11 @@ export function AddCompetitorModal({ isOpen, onClose, onAdd, isLoading = false }
       }
 
       const result = await response.json()
-      onAdd(urlWithProtocol, result.data)
       setUrl("")
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch seller information")
+      setIsFetching(false)
+    } finally {
       setIsFetching(false)
     }
   }
