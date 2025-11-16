@@ -94,22 +94,22 @@ export async function scrapeEbayProduct(itemUrl: string) {
 
     const title =
       (await page
-        .$eval("h1[itemprop='name']", (el) => el.textContent?.trim())
+        .$eval("h1[itemprop='name']", (el: Element) => el.textContent?.trim())
         .catch(() => null)) ||
       (await page
-        .$eval('div[data-testid="x-item-title"] h1 span', (el) =>
+        .$eval('div[data-testid="x-item-title"] h1 span', (el: Element) =>
           el.textContent?.trim()
         )
         .catch(() => null));
 
     const priceStr =
       (await page
-        .$eval('span[itemprop="price"]', (el) => el.textContent)
+        .$eval('span[itemprop="price"]', (el: Element) => el.textContent)
         .catch(() => null)) ||
       (await page
         .$eval(
           'div[data-testid="x-price-primary"] span',
-          (el) => el.textContent
+          (el: Element) => el.textContent
         )
         .catch(() => null));
 
@@ -131,12 +131,12 @@ export async function scrapeEbayProduct(itemUrl: string) {
 
     const shippingStr =
       (await page
-        .$eval("span[data-testid='shipping-cost']", (el) => el.textContent)
+        .$eval("span[data-testid='shipping-cost']", (el: Element) => el.textContent)
         .catch(() => null)) ||
       (await page
         .$eval(
           "div.ux-labels-values--shipping span.ux-textspans--BOLD",
-          (el) => el.textContent
+          (el: Element) => el.textContent
         )
         .catch(() => "0"));
 
@@ -148,23 +148,23 @@ export async function scrapeEbayProduct(itemUrl: string) {
       (await page
         .$eval(
           'div[data-testid="x-item-condition"] div.x-item-condition-text span.ux-textspans',
-          (el) => el.textContent?.trim()
+          (el: Element) => el.textContent?.trim()
         )
         .catch(() => null)) ||
       (await page
-        .$eval('div[itemprop="itemCondition"]', (el) => el.textContent?.trim())
+        .$eval('div[itemprop="itemCondition"]', (el: Element) => el.textContent?.trim())
         .catch(() => null));
 
     const quantityAvailable =
       (await page
-        .$eval('span[itemprop="inventoryLevel"]', (el) =>
+        .$eval('span[itemprop="inventoryLevel"]', (el: Element) =>
           parseInt(el.textContent || "0")
         )
         .catch(() => null)) ||
       (await page
         .$eval(
           'div[data-testid="x-quantity"] span.ux-textspans--SECONDARY',
-          (el) => {
+          (el: Element) => {
             const match = (el.textContent || "").match(/\d+/);
             return match ? Number(match[0]) : null;
           }
@@ -173,7 +173,7 @@ export async function scrapeEbayProduct(itemUrl: string) {
 
     const totalSold =
       (await page
-        .$eval('span[itemprop="soldQuantity"]', (el) => {
+        .$eval('span[itemprop="soldQuantity"]', (el: Element) => {
           const match = (el.textContent || "").match(/[\d,]+/);
           return match ? Number(match[0].replace(/,/g, "")) : null;
         })
@@ -181,7 +181,7 @@ export async function scrapeEbayProduct(itemUrl: string) {
       (await page
         .$eval(
           'div[data-testid="x-quantity"] span.ux-textspans--BOLD',
-          (el) => {
+          (el: Element) => {
             const match = (el.textContent || "").match(/\d+/);
             return match ? Number(match[0]) : null;
           }
@@ -190,10 +190,10 @@ export async function scrapeEbayProduct(itemUrl: string) {
 
     const image =
       (await page
-        .$eval("img[itemprop='image']", (el) => el.getAttribute("src"))
+        .$eval("img[itemprop='image']", (el: Element) => el.getAttribute("src"))
         .catch(() => null)) ||
       (await page
-        .$eval("div.ux-image-carousel-container img", (el) =>
+        .$eval("div.ux-image-carousel-container img", (el: Element) =>
           el.getAttribute("src")
         )
         .catch(() => null));
