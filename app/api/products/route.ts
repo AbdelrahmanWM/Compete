@@ -48,6 +48,8 @@ export async function GET(request: NextRequest) {
         product.lastUpdated || product.timestamp || new Date().toISOString(),
       description: product.description || "",
       product_url: product.product_url || "",
+      currentSnapshot: product.currentSnapshot || null,
+      pastSnapshots: product.pastSnapshots || [],
     }));
 
     return NextResponse.json({
@@ -122,6 +124,17 @@ export async function POST(request: NextRequest) {
           )
         : null;
 
+    // Create current snapshot
+    const nowSnap = {
+      price: scraped.price || 0,
+      quantity_available: scraped.quantity_available,
+      rating: scraped.rating || 0,
+      last_24_hours: scraped.last_24_hours || "No Info",
+      watchers_count: scraped.watchers_count || 0,
+      total_sold_listing: scraped.total_sold_listing || 0,
+      timestamp: new Date(),
+    };
+
     // Prepare product document
     const product = {
       competitor: competitor,
@@ -153,6 +166,8 @@ export async function POST(request: NextRequest) {
       timestamp: scrapedData?.timestamp || new Date().toISOString(),
       createdAt: new Date(),
       updatedAt: new Date(),
+      currentSnapshot: nowSnap,
+      pastSnapshots: [],
     };
 
     // Save to MongoDB
@@ -168,12 +183,20 @@ export async function POST(request: NextRequest) {
     });
 
     if (existing) {
+      // Update existing product — move old snapshot to pastSnapshots
+      const pastSnapshots = existing.pastSnapshots || [];
+      if (existing.currentSnapshot)
+        pastSnapshots.unshift(existing.currentSnapshot);
+      const limitedSnapshots = pastSnapshots.slice(0, 7);
+
       // Update existing product
       await collection.updateOne(
         { _id: existing._id },
         {
           $set: {
             ...product,
+            currentSnapshot: nowSnap,
+            pastSnapshots: limitedSnapshots,
             updatedAt: new Date(),
           },
           $push: {
@@ -181,7 +204,7 @@ export async function POST(request: NextRequest) {
               $each: [product.currentPrice],
               $slice: -30, // Keep last 30 price points
             },
-          },
+          } as any,
         }
       );
 
@@ -212,6 +235,141 @@ export async function POST(request: NextRequest) {
       {
         error:
           error instanceof Error ? error.message : "Failed to create product",
+      },
+      { status: 500 }
+    );
+  }
+}
+
+// PATCH - Refresh product information and store snapshot history
+export async function PATCH(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const productId = searchParams.get("id");
+
+    if (!productId) {
+      return NextResponse.json(
+        { error: "Missing required parameter: id" },
+        { status: 400 }
+      );
+    }
+
+    const db = await getDb();
+    const collection = db.collection("products");
+    const { ObjectId } = require("mongodb");
+
+    // Find the existing product
+    const existing = await collection.findOne({
+      _id: new ObjectId(productId),
+    });
+
+    if (!existing) {
+      return NextResponse.json({ error: "Product not found" }, { status: 404 });
+    }
+
+    // Scrape the latest product info
+    const scrapeResult = await scrapeEbayProduct(existing.product_url);
+
+    if (!scrapeResult || !scrapeResult.product) {
+      return NextResponse.json(
+        {
+          error:
+            "Failed to scrape product - bot check detected or product not found",
+        },
+        { status: 500 }
+      );
+    }
+
+    const scraped = scrapeResult.product as any;
+
+    // Determine stock status
+    const stockStatus = determineStockStatus(scraped.quantity_available);
+
+    // Calculate discount if original price exists
+    const isDiscounted =
+      scraped.originalPrice && scraped.price
+        ? scraped.originalPrice > scraped.price
+        : false;
+    const discountPercent =
+      isDiscounted && scraped.originalPrice && scraped.price
+        ? Math.round(
+            ((scraped.originalPrice - scraped.price) / scraped.originalPrice) *
+              100
+          )
+        : null;
+
+    // Create new snapshot
+    const nowSnap = {
+      price: scraped.price || 0,
+      quantity_available: scraped.quantity_available,
+      rating: scraped.rating || 0,
+      last_24_hours: scraped.last_24_hours || "No Info",
+      watchers_count: scraped.watchers_count || 0,
+      total_sold_listing: scraped.total_sold_listing || 0,
+      timestamp: new Date(),
+    };
+
+    // Move current snapshot to pastSnapshots
+    const pastSnapshots = existing.pastSnapshots || [];
+    if (existing.currentSnapshot)
+      pastSnapshots.unshift(existing.currentSnapshot);
+    const limitedSnapshots = pastSnapshots.slice(0, 7);
+
+    // Prepare updated product data
+    const updatedProduct = {
+      name: scraped.title || scraped.name || existing.name,
+      title: scraped.title,
+      currentPrice: scraped.price || existing.currentPrice,
+      price: scraped.price,
+      originalPrice: scraped.originalPrice || null,
+      shipping_cost: scraped.shipping_cost || 0,
+      condition: scraped.condition,
+      quantity_available: scraped.quantity_available,
+      total_sold_listing: scraped.total_sold_listing,
+      stock: stockStatus,
+      rating: scraped.rating || 0,
+      reviewCount: scraped.total_sold_listing || scraped.review_count || 0,
+      isDiscounted: isDiscounted,
+      discountPercent: discountPercent,
+      image: scraped.images && scraped.images[0] ? scraped.images[0] : null,
+      images: scraped.images || [],
+      last_24_hours: scraped.last_24_hours,
+      watchers_count: scraped.watchers_count,
+      category: scraped.category || "Uncategorized",
+      description: scraped.description || "",
+      currentSnapshot: nowSnap,
+      pastSnapshots: limitedSnapshots,
+      updatedAt: new Date(),
+    };
+
+    // Update the product
+    await collection.updateOne(
+      { _id: existing._id },
+      {
+        $set: updatedProduct,
+        $push: {
+          priceHistory: {
+            $each: [scraped.price || 0],
+            $slice: -30,
+          },
+        } as any,
+      }
+    );
+
+    return NextResponse.json({
+      success: true,
+      message: "Product refreshed successfully",
+      data: {
+        id: existing._id.toString(),
+        ...updatedProduct,
+      },
+    });
+  } catch (error) {
+    console.error("Error refreshing product:", error);
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error ? error.message : "Failed to refresh product",
       },
       { status: 500 }
     );

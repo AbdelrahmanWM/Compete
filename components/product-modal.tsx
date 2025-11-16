@@ -19,6 +19,7 @@ import {
   ShoppingCart,
   Users,
   Trash2,
+  RefreshCw,
 } from "lucide-react";
 import type { Product } from "@/app/products/page";
 import {
@@ -62,6 +63,7 @@ export default function ProductModal({
   );
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const handleDeleteClick = () => {
     setShowDeleteConfirm(true);
@@ -92,6 +94,28 @@ export default function ProductModal({
 
   const handleCancelDelete = () => {
     setShowDeleteConfirm(false);
+  };
+
+  const handleRefreshProduct = async () => {
+    setIsRefreshing(true);
+    try {
+      const response = await fetch(`/api/products?id=${product.id}`, {
+        method: "PATCH",
+      });
+
+      if (response.ok) {
+        // Trigger a refresh in the parent component
+        onDelete?.();
+        onClose();
+      } else {
+        alert("Failed to refresh product");
+      }
+    } catch (error) {
+      console.error("Error refreshing product:", error);
+      alert("Error refreshing product");
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   const stockColor = {
@@ -209,16 +233,23 @@ export default function ProductModal({
                 <Button
                   variant="outline"
                   size="lg"
-                  className="flex-1 h-12 text-base font-semibold"
+                  className="h-12 text-base font-semibold"
+                  onClick={handleRefreshProduct}
+                  disabled={isRefreshing || isDeleting || showDeleteConfirm}
                 >
-                  Track Price
+                  <RefreshCw
+                    className={`h-4 w-4 mr-2 ${
+                      isRefreshing ? "animate-spin" : ""
+                    }`}
+                  />
+                  {isRefreshing ? "Refreshing..." : "Refresh"}
                 </Button>
                 <Button
                   variant="destructive"
                   size="lg"
                   className="h-12 text-base font-semibold"
                   onClick={handleDeleteClick}
-                  disabled={isDeleting || showDeleteConfirm}
+                  disabled={isDeleting || showDeleteConfirm || isRefreshing}
                 >
                   <Trash2 className="h-4 w-4 mr-2" />
                   {isDeleting ? "Deleting..." : "Delete"}

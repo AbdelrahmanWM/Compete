@@ -1,54 +1,21 @@
-import { GoogleGenAI } from "@google/genai";
-
-// Normal async function
-export const  getCompetitorAnswer = async(question: string)=> {
-  let answer = "";
-
+// Client-side wrapper: call server API that uses Gemini with secret API key
+export const getCompetitorAnswer = async (question: string) => {
   try {
-    // Fetch data from your internal API (MongoDB)
-    const dbRes = await fetch("/api/competitors", {
-      method: "GET",
+    const res = await fetch("/api/ai", {
+      method: "POST",
       headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question }),
     });
 
-    if (!dbRes.ok) {
-      throw new Error(`DB fetch failed: ${dbRes.status}`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err?.error || `AI request failed: ${res.status}`);
     }
 
-    const { data } = await dbRes.json();
-    const context = JSON.stringify(data, null, 2);
-
-    const prompt = `
-You are an assistant trained on competitor data.
-
-User question:
-"${question}"
-
-Relevant data:
-${context}
-
-Answer only using the data provided above.
-    `;
-
-    // Initialize Gemini
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-
-    const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash-001",
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-    });
-
-    const parts = response.response?.parts;
-    if (Array.isArray(parts) && parts.length > 0) {
-      answer = parts.map((p) => p.text).join("").trim();
-    } else {
-      console.warn("GenAI returned no parts:", response);
-      answer = "No answer returned by the model.";
-    }
-  } catch (err) {
-    console.error("Error generating answer:", err);
-    answer = "An error occurred while generating the answer.";
+    const payload = await res.json();
+    return payload?.answer || "";
+  } catch (e) {
+    console.error("getCompetitorAnswer error:", e);
+    return "An error occurred while generating the answer.";
   }
-
-  return answer;
-}
+};
