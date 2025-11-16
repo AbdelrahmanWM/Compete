@@ -1,7 +1,7 @@
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Star, Package } from 'lucide-react'
+import { Star, Package, Eye } from 'lucide-react'
 import type { Product } from '@/app/products/page'
 import PriceSparkline from './price-sparkline'
 import Image from 'next/image'
@@ -64,13 +64,26 @@ export default function ProductCard({ product, onClick }: ProductCardProps) {
           </div>
         </div>
 
+        {/* ⭐ Rating OR 👁 Watchers */}
         <div className="flex items-center justify-between text-sm">
-          <div className="flex items-center gap-1">
-            <Star className="h-4 w-4 fill-yellow-500 text-yellow-500" />
-            <span className="font-medium text-foreground">{product.rating}</span>
-            <span className="text-muted-foreground">({product.reviewCount})</span>
-          </div>
+          {product.rating > 0 ? (
+            <div className="flex items-center gap-1">
+              <Star className="h-4 w-4 fill-yellow-500 text-yellow-500" />
+              <span className="font-medium text-foreground">{product.rating}</span>
+              <span className="text-muted-foreground">({product.reviewCount})</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1 text-muted-foreground">
+              <Eye className="h-4 w-4" />
+              <span>{product.watchers_count || 0} watching</span>
+            </div>
+          )}
         </div>
+
+        {/* 🕒 Last 24 Hours */}
+        {product.last_24_hours && (
+          <p className="text-xs text-blue-600 font-medium">{product.last_24_hours}</p>
+        )}
 
         <div className="pt-2">
           <p className="text-xs text-muted-foreground mb-2">Price Trend</p>

@@ -34,10 +34,13 @@ export async function GET(request: NextRequest) {
       priceHistory: product.priceHistory || [
         product.currentPrice || product.price || 0,
       ],
+      last_24_hours: product.last_24_hours || "No Info", // ⭐ TEXT ONLY
+      watchers_count: product.watchers_count || 0, // ⭐ NUMBER
       category: product.category || "Uncategorized",
       lastUpdated:
         product.lastUpdated || product.timestamp || new Date().toISOString(),
       description: product.description || "",
+      product_url: product.product_url || "",
     }));
 
     return NextResponse.json({
@@ -134,6 +137,8 @@ export async function POST(request: NextRequest) {
       discountPercent: discountPercent,
       image: scraped.images && scraped.images[0] ? scraped.images[0] : null,
       images: scraped.images || [],
+      last_24_hours: scraped.last_24_hours, // ⭐ TEXT ONLY
+      watchers_count: scraped.watchers_count,
       category: scraped.category || "Uncategorized",
       description: scraped.description || "",
       priceHistory: [scraped.price || 0],

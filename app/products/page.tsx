@@ -25,9 +25,12 @@ export type Product = {
   discountPercent?: number;
   image: string;
   priceHistory: number[];
+  last_24_hours: string; // ⭐ TEXT ONLY
+  watchers_count: number; // ⭐ NUMBER
   category: string;
   lastUpdated: string;
   description: string;
+  product_url: string;
 };
 
 type ViewMode = "grid" | "list";
@@ -45,6 +48,7 @@ export default function ProductsPage() {
 
   // Filters
   const [selectedCompetitors, setSelectedCompetitors] = useState<string[]>([]);
+  const [competitors, setCompetitors] = useState<string[]>([]);
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 500]);
   const [minRating, setMinRating] = useState(0);
   const [stockFilter, setStockFilter] = useState<string[]>([]);
@@ -80,6 +84,25 @@ export default function ProductsPage() {
     };
 
     fetchProducts();
+  }, []);
+
+  // Fetch competitors for filters
+  useEffect(() => {
+    const fetchCompetitors = async () => {
+      try {
+        const res = await fetch("/api/competitors");
+        if (!res.ok) return;
+        const json = await res.json();
+        if (json && Array.isArray(json.data)) {
+          const names = json.data.map((c: any) => c.name).filter(Boolean);
+          setCompetitors(names);
+        }
+      } catch (err) {
+        console.error("Error fetching competitors:", err);
+      }
+    };
+
+    fetchCompetitors();
   }, []);
 
   // Filter and sort products
@@ -172,6 +195,7 @@ export default function ProductsPage() {
       {/* Filter Sidebar */}
       <ProductFilterSidebar
         open={filterSidebarOpen}
+        competitors={competitors}
         selectedCompetitors={selectedCompetitors}
         onCompetitorsChange={setSelectedCompetitors}
         priceRange={priceRange}
