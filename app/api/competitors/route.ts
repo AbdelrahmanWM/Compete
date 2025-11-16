@@ -1,21 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/mongodb";
-import { ObjectId } from "mongodb";
+import { adminAuth } from "@/lib/firebaseAdmin";
+import { getUserFromRequest } from "@/lib/getUserFromRequest";
 
 export const runtime = "nodejs";
 
+/* -------------------------- 📌 GET — User Competitors -------------------------- */
 export async function GET(request: NextRequest) {
+  console.log("Authorization header:", request.headers.get("authorization"));
   try {
+    const userId = await getUserFromRequest(request);
+    if (!userId)
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+
     const db = await getDb();
     const collection = db.collection("competitors");
 
+    // Only get competitors for this user 🔥
     const competitors = await collection
-      .find({})
+      .find({ userId })
       .sort({ createdAt: -1 })
       .toArray();
 
-    // Transform MongoDB documents to match the frontend Competitor type
-    const formattedCompetitors = competitors.map((comp) => ({
+    const formatted = competitors.map((comp) => ({
       id: comp._id.toString(),
       name: comp.name,
       logo: comp.logo,
@@ -35,57 +45,13 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data: formattedCompetitors,
+      data: formatted,
     });
   } catch (error) {
     console.error("Error fetching competitors:", error);
     return NextResponse.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to fetch competitors",
-      },
-      { status: 500 }
-    );
-  }
-}
-
-export async function DELETE(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get("id");
-
-    if (!id) {
-      return NextResponse.json({ error: "ID is required" }, { status: 400 });
-    }
-
-    const db = await getDb();
-    const collection = db.collection("competitors");
-
-    const result = await collection.deleteOne({
-      _id: new ObjectId(id),
-    });
-
-    if (result.deletedCount === 0) {
-      return NextResponse.json(
-        { error: "Competitor not found" },
-        { status: 404 }
-      );
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: "Competitor deleted successfully",
-    });
-  } catch (error) {
-    console.error("Error deleting competitor:", error);
-    return NextResponse.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to delete competitor",
+        error: error instanceof Error ? error.message : "Failed to fetch competitors",
       },
       { status: 500 }
     );
