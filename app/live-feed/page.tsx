@@ -4,7 +4,6 @@ import { useState, useMemo, useEffect } from 'react'
 import { EventFilterBar } from '@/components/event-filter-bar'
 import { EventItem } from '@/components/event-item'
 import { EventStats } from '@/components/event-stats'
-import { updateCompetitor } from '@/jobs/updateCompetitors'
 
 export type EventType = 'price_drop' | 'price_increase' | 'stock_change' | 'alert' | 'new_product'
 
@@ -138,9 +137,10 @@ export default function LiveFeedPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [viewMode, setViewMode] = useState<'feed' | 'condensed'>('feed')
 
-  useEffect(() => {
-    updateCompetitor('https://www.ebay.ca/str/surplusbydesign')
-  }, []);
+  // NOTE: avoid importing server-side scraping helpers (Playwright) into client bundles.
+  // Previously this component imported `updateCompetitor` which pulled Playwright into the
+  // client build and caused asset bundling errors. If you need to trigger a refresh from
+  // the UI, call the server-side API (e.g. PATCH /api/competitors/refresh) instead.
 
   // Filter events based on selections
   const filteredEvents = useMemo(() => {
