@@ -31,13 +31,23 @@ export async function GET(request: NextRequest) {
         product.image ||
         (product.images && product.images[0]) ||
         "/placeholder.svg",
+      images: product.images || [],
+      ebay_item_id: product.ebay_item_id || null,
+      currency: product.currency || null,
+      shipping_cost: product.shipping_cost || null,
+      condition: product.condition || null,
+      quantity_available: product.quantity_available ?? null,
+      total_sold_listing: product.total_sold_listing ?? null,
       priceHistory: product.priceHistory || [
         product.currentPrice || product.price || 0,
       ],
+      last_24_hours: product.last_24_hours || "No Info", // ⭐ TEXT ONLY
+      watchers_count: product.watchers_count || 0, // ⭐ NUMBER
       category: product.category || "Uncategorized",
       lastUpdated:
         product.lastUpdated || product.timestamp || new Date().toISOString(),
       description: product.description || "",
+      product_url: product.product_url || "",
     }));
 
     return NextResponse.json({
@@ -134,6 +144,8 @@ export async function POST(request: NextRequest) {
       discountPercent: discountPercent,
       image: scraped.images && scraped.images[0] ? scraped.images[0] : null,
       images: scraped.images || [],
+      last_24_hours: scraped.last_24_hours, // ⭐ TEXT ONLY
+      watchers_count: scraped.watchers_count,
       category: scraped.category || "Uncategorized",
       description: scraped.description || "",
       priceHistory: [scraped.price || 0],
@@ -200,6 +212,48 @@ export async function POST(request: NextRequest) {
       {
         error:
           error instanceof Error ? error.message : "Failed to create product",
+      },
+      { status: 500 }
+    );
+  }
+}
+
+// DELETE - Delete a product
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const productId = searchParams.get("id");
+
+    if (!productId) {
+      return NextResponse.json(
+        { error: "Missing required parameter: id" },
+        { status: 400 }
+      );
+    }
+
+    const db = await getDb();
+    const collection = db.collection("products");
+
+    const { ObjectId } = require("mongodb");
+
+    const result = await collection.deleteOne({
+      _id: new ObjectId(productId),
+    });
+
+    if (result.deletedCount === 0) {
+      return NextResponse.json({ error: "Product not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: "Product deleted successfully",
+    });
+  } catch (error) {
+    console.error("Error deleting product:", error);
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error ? error.message : "Failed to delete product",
       },
       { status: 500 }
     );

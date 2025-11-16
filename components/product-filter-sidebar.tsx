@@ -1,28 +1,35 @@
-import { X, Filter } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Label } from '@/components/ui/label'
-import { Slider } from '@/components/ui/slider'
+import { X, Filter } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { Slider } from "@/components/ui/slider";
 
 type ProductFilterSidebarProps = {
-  open: boolean
-  selectedCompetitors: string[]
-  onCompetitorsChange: (competitors: string[]) => void
-  priceRange: [number, number]
-  onPriceRangeChange: (range: [number, number]) => void
-  minRating: number
-  onMinRatingChange: (rating: number) => void
-  stockFilter: string[]
-  onStockFilterChange: (stock: string[]) => void
-  showDiscountedOnly: boolean
-  onShowDiscountedOnlyChange: (show: boolean) => void
-}
-
-const competitors = ['TechElite', 'ValueTech', 'GamerPro', 'SmartHome Plus', 'BudgetBytes']
-const stockOptions = ['In Stock', 'Low Stock', 'Out of Stock']
+  open: boolean;
+  competitors?: string[];
+  selectedCompetitors: string[];
+  onCompetitorsChange: (competitors: string[]) => void;
+  priceRange: [number, number];
+  onPriceRangeChange: (range: [number, number]) => void;
+  minRating: number;
+  onMinRatingChange: (rating: number) => void;
+  stockFilter: string[];
+  onStockFilterChange: (stock: string[]) => void;
+  showDiscountedOnly: boolean;
+  onShowDiscountedOnlyChange: (show: boolean) => void;
+};
+const fallbackCompetitors = [
+  "TechElite",
+  "ValueTech",
+  "GamerPro",
+  "SmartHome Plus",
+  "BudgetBytes",
+];
+const stockOptions = ["In Stock", "Low Stock", "Out of Stock"];
 
 export default function ProductFilterSidebar({
   open,
+  competitors,
   selectedCompetitors,
   onCompetitorsChange,
   priceRange,
@@ -34,31 +41,31 @@ export default function ProductFilterSidebar({
   showDiscountedOnly,
   onShowDiscountedOnlyChange,
 }: ProductFilterSidebarProps) {
-  if (!open) return null
+  if (!open) return null;
 
   const toggleCompetitor = (competitor: string) => {
     if (selectedCompetitors.includes(competitor)) {
-      onCompetitorsChange(selectedCompetitors.filter((c) => c !== competitor))
+      onCompetitorsChange(selectedCompetitors.filter((c) => c !== competitor));
     } else {
-      onCompetitorsChange([...selectedCompetitors, competitor])
+      onCompetitorsChange([...selectedCompetitors, competitor]);
     }
-  }
+  };
 
   const toggleStock = (stock: string) => {
     if (stockFilter.includes(stock)) {
-      onStockFilterChange(stockFilter.filter((s) => s !== stock))
+      onStockFilterChange(stockFilter.filter((s) => s !== stock));
     } else {
-      onStockFilterChange([...stockFilter, stock])
+      onStockFilterChange([...stockFilter, stock]);
     }
-  }
+  };
 
   const clearAllFilters = () => {
-    onCompetitorsChange([])
-    onPriceRangeChange([0, 500])
-    onMinRatingChange(0)
-    onStockFilterChange([])
-    onShowDiscountedOnlyChange(false)
-  }
+    onCompetitorsChange([]);
+    onPriceRangeChange([0, 500]);
+    onMinRatingChange(0);
+    onStockFilterChange([]);
+    onShowDiscountedOnlyChange(false);
+  };
 
   return (
     <div className="w-80 border-r border-border bg-background overflow-y-auto flex-shrink-0">
@@ -75,9 +82,14 @@ export default function ProductFilterSidebar({
 
         {/* Competitors */}
         <div className="space-y-3">
-          <Label className="text-sm font-semibold text-foreground">Competitors</Label>
+          <Label className="text-sm font-semibold text-foreground">
+            Competitors
+          </Label>
           <div className="space-y-2">
-            {competitors.map((competitor) => (
+            {(competitors && competitors.length > 0
+              ? competitors
+              : fallbackCompetitors
+            ).map((competitor) => (
               <div key={competitor} className="flex items-center space-x-2">
                 <Checkbox
                   id={`competitor-${competitor}`}
@@ -102,7 +114,9 @@ export default function ProductFilterSidebar({
           </Label>
           <Slider
             value={priceRange}
-            onValueChange={(value) => onPriceRangeChange(value as [number, number])}
+            onValueChange={(value) =>
+              onPriceRangeChange(value as [number, number])
+            }
             max={500}
             step={10}
             className="mt-2"
@@ -112,7 +126,7 @@ export default function ProductFilterSidebar({
         {/* Minimum Rating */}
         <div className="space-y-3">
           <Label className="text-sm font-semibold text-foreground">
-            Minimum Rating: {minRating === 0 ? 'Any' : `${minRating}+`}
+            Minimum Rating: {minRating === 0 ? "Any" : `${minRating}+`}
           </Label>
           <Slider
             value={[minRating]}
@@ -125,7 +139,9 @@ export default function ProductFilterSidebar({
 
         {/* Stock Status */}
         <div className="space-y-3">
-          <Label className="text-sm font-semibold text-foreground">Stock Status</Label>
+          <Label className="text-sm font-semibold text-foreground">
+            Stock Status
+          </Label>
           <div className="space-y-2">
             {stockOptions.map((stock) => (
               <div key={stock} className="flex items-center space-x-2">
@@ -147,12 +163,16 @@ export default function ProductFilterSidebar({
 
         {/* Discount Status */}
         <div className="space-y-3">
-          <Label className="text-sm font-semibold text-foreground">Discount</Label>
+          <Label className="text-sm font-semibold text-foreground">
+            Discount
+          </Label>
           <div className="flex items-center space-x-2">
             <Checkbox
               id="discounted-only"
               checked={showDiscountedOnly}
-              onCheckedChange={(checked) => onShowDiscountedOnlyChange(!!checked)}
+              onCheckedChange={(checked) =>
+                onShowDiscountedOnlyChange(!!checked)
+              }
             />
             <label
               htmlFor="discounted-only"
@@ -164,5 +184,5 @@ export default function ProductFilterSidebar({
         </div>
       </div>
     </div>
-  )
+  );
 }

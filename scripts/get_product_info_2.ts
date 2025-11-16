@@ -3,8 +3,8 @@ import { chromium } from "playwright";
 import dotenv from "dotenv";
 dotenv.config();
 
-const MAX_TIMEOUT = 20000; // Reduced from 45000 to 20000 (20 seconds)
-const SELECTOR_TIMEOUT = 10000; // Separate shorter timeout for selectors
+const MAX_TIMEOUT = 20000;
+const SELECTOR_TIMEOUT = 10000;
 
 function parseCompact(str: string | null): number | null {
   if (!str) return null;
@@ -46,32 +46,25 @@ export async function scrapeEbayProduct(itemUrl: string) {
         waitUntil: "domcontentloaded",
         timeout: MAX_TIMEOUT,
       });
-      // Reduced timeout and make it non-blocking
       await page
-        .waitForSelector("h1[itemprop='name']", {
-          timeout: SELECTOR_TIMEOUT,
-        })
-        .catch(() => {
-          console.warn("⚠ Title selector not found, continuing...");
-        });
+        .waitForSelector("h1[itemprop='name']", { timeout: SELECTOR_TIMEOUT })
+        .catch(() => console.warn("⚠ Title selector not found, continuing..."));
     } catch {
       console.warn("⚠ Navigation timeout, continuing anyway…");
     }
 
-    await delay(50); // Reduced from 200ms to 50ms
+    await delay(50);
 
-    // Faster scroll - reduced delay per viewport
     await page.evaluate(async () => {
       const viewportHeight = window.innerHeight;
       const totalHeight = document.body.scrollHeight;
       for (let y = 0; y < totalHeight; y += viewportHeight) {
         window.scrollTo(0, y);
-        await new Promise((r) => setTimeout(r, 20)); // Reduced from 50ms to 20ms
+        await new Promise((r) => setTimeout(r, 20));
       }
     });
-    await delay(50); // Reduced from 200ms to 50ms
+    await delay(50);
 
-    // Close popups - parallel check instead of sequential
     const popupSelectors = [
       'button:has-text("Continue")',
       'button:has-text("No Thanks")',
@@ -84,21 +77,18 @@ export async function scrapeEbayProduct(itemUrl: string) {
         if (el) {
           console.log("🟡 Closing popup →", sel);
           await el.click({ force: true });
-          await delay(50); // Reduced from 200ms to 50ms
+          await delay(50);
         }
       } catch {}
     }
 
-    // Detect bot check
     const botCheck = await page.$("text='Check your browser before accessing'");
     if (botCheck) {
-      console.log(
-        "⚠ eBay blocked automated access. Use a different session/IP."
-      );
+      console.log("⚠ eBay blocked automated access.");
       return null;
     }
 
-    // --- Scrape product fields ---
+    // --- SCRAPE FIELDS ---
     const title =
       (await page
         .$eval("h1[itemprop='name']", (el: Element) => el.textContent?.trim())
@@ -126,23 +116,22 @@ export async function scrapeEbayProduct(itemUrl: string) {
     if (priceStr) {
       const numMatch = priceStr.replace(/,/g, "").match(/[\d.]+/);
       price = numMatch ? Number(numMatch[0]) : null;
+
       const currencyMatch = priceStr.match(/^([^\d]*)/);
       if (currencyMatch) {
         const curr = currencyMatch[1].trim();
-        if (curr.includes("US") || (curr.includes("$") && curr.includes("US")))
-          currency = "USD";
-        else if (
-          curr.includes("C") ||
-          (curr.includes("$") && curr.includes("C"))
-        )
-          currency = "CAD";
+        if (curr.includes("US")) currency = "USD";
+        else if (curr.includes("C")) currency = "CAD";
         else currency = curr || null;
       }
     }
 
     const shippingStr =
       (await page
-        .$eval("span[data-testid='shipping-cost']", (el: Element) => el.textContent)
+        .$eval(
+          "span[data-testid='shipping-cost']",
+          (el: Element) => el.textContent
+        )
         .catch(() => null)) ||
       (await page
         .$eval(
@@ -150,6 +139,7 @@ export async function scrapeEbayProduct(itemUrl: string) {
           (el: Element) => el.textContent
         )
         .catch(() => "0"));
+
     const shipping_cost = shippingStr?.toLowerCase().includes("free")
       ? 0
       : parseCompact(shippingStr);
@@ -162,7 +152,9 @@ export async function scrapeEbayProduct(itemUrl: string) {
         )
         .catch(() => null)) ||
       (await page
-        .$eval('div[itemprop="itemCondition"]', (el: Element) => el.textContent?.trim())
+        .$eval('div[itemprop="itemCondition"]', (el: Element) =>
+          el.textContent?.trim()
+        )
         .catch(() => null));
 
     const quantityAvailable =
@@ -183,20 +175,15 @@ export async function scrapeEbayProduct(itemUrl: string) {
 
     const totalSold =
       (await page
-        .$eval('span[itemprop="soldQuantity"]', (el: Element) => {
-          const match = (el.textContent || "").match(/[\d,]+/);
+        .$eval("#qtyAvailability", (el: HTMLElement) => {
+          const soldSpan = Array.from(el.querySelectorAll("span")).find((s) =>
+            s.textContent?.toLowerCase().includes("sold")
+          );
+          if (!soldSpan) return null;
+          const match = soldSpan.textContent?.match(/[\d,]+/);
           return match ? Number(match[0].replace(/,/g, "")) : null;
         })
-        .catch(() => null)) ||
-      (await page
-        .$eval(
-          'div[data-testid="x-quantity"] span.ux-textspans--BOLD',
-          (el: Element) => {
-            const match = (el.textContent || "").match(/\d+/);
-            return match ? Number(match[0]) : null;
-          }
-        )
-        .catch(() => null));
+        .catch(() => null)) || null;
 
     const image =
       (await page
@@ -208,47 +195,89 @@ export async function scrapeEbayProduct(itemUrl: string) {
         )
         .catch(() => null));
 
+    // --- LAST 24 HOURS ---
+    const last24hoursText = await page
+      .$eval(
+        'div[data-testid="x-ebay-signal"] .ux-textspans',
+        (el) => el.textContent?.trim() || null
+      )
+      .catch(() => null);
+
+    // --- WATCHERS ---
+    const watchersCount = await page
+      .$eval("button.x-watch-heart-btn span.x-watch-heart-btn-text", (el) => {
+        const t = el.textContent?.trim() || "";
+        const m = t.match(/\d+/);
+        return m ? Number(m[0]) : null;
+      })
+      .catch(() => null);
+
+    // --- DISCOUNT & ORIGINAL PRICE LOGIC ---
+    const originalPriceStr = await page
+      .$eval(
+        "span.ux-textspans--STRIKETHROUGH",
+        (el: Element) => el.textContent?.trim() || null
+      )
+      .catch(() => null);
+
+    const discountPercentStr = await page
+      .$eval(
+        "span.x-price-transparency--discount span.ux-textspans--SECONDARY:nth-child(4)",
+        (el: Element) => el.textContent?.trim() || null
+      )
+      .catch(() => null);
+
+    const currentPrice = price ?? null;
+    let originalPrice: number;
+    let discountPercent: number;
+
+    if (originalPriceStr && discountPercentStr) {
+      const matchOrig = originalPriceStr.replace(/,/g, "").match(/[\d.]+/);
+      originalPrice = matchOrig ? Number(matchOrig[0]) : currentPrice;
+
+      const matchDisc = discountPercentStr.match(/(\d+)%/);
+      discountPercent = matchDisc ? Number(matchDisc[1]) : 0;
+    } else {
+      originalPrice = currentPrice;
+      discountPercent = 0;
+    }
+
     const result = {
       product: {
         title,
         ebay_item_id: itemUrl.split("/itm/")[1]?.split("/")[0] || null,
         product_url: itemUrl,
         price,
+        currentPrice,
+        originalPrice,
+        discountPercent,
         currency,
         shipping_cost,
         condition,
         quantity_available: quantityAvailable,
         total_sold_listing: totalSold,
+        last_24_hours: last24hoursText,
+        watchers_count: watchersCount,
         images: image ? [image] : [],
       },
       timestamp: new Date().toISOString(),
     };
 
     console.log("✅ Product scrape complete:", result);
-
-    // Removed final delay - not needed
     return result;
   } catch (error) {
     console.error("❌ Error during scraping:", error);
     throw error;
   } finally {
-    // Cleanup: close browser and end session
     try {
-      if (browser) {
-        await browser.close();
-      }
-    } catch (err) {
-      console.warn("⚠ Error closing browser:", err);
-    }
+      if (browser) await browser.close();
+    } catch {}
     try {
       await sdk.endSession();
-    } catch (err) {
-      console.warn("⚠ Error ending session:", err);
-    }
+    } catch {}
   }
 }
 
-// Example usage
 if (require.main === module) {
   scrapeEbayProduct("https://www.ebay.ca/itm/286422982038")
     .then(console.log)
