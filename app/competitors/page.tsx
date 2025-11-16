@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   LayoutGrid,
   List,
@@ -15,6 +15,8 @@ import { CompetitorTable } from "@/components/competitor-table";
 import { CompetitorModal } from "@/components/competitor-modal";
 import { AddCompetitorModal } from "@/components/add-competitor-modal";
 import { FilterSidebar } from "@/components/filter-sidebar";
+import { getAuth, onAuthStateChanged, User } from "firebase/auth";
+
 
 import { Competitor } from "@/app/interfaces/Competitor";
 
@@ -25,42 +27,83 @@ type SortOption =
   | "promotion"
   | "products";
 
+// ---------------------- 🔑 Custom hook ----------------------
+const useCurrentUser = () => {
+  const [user, setUser] = useState<User | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const auth = getAuth();
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        setUser(firebaseUser);
+
+        // IMPORTANT: DO NOT force-refresh
+        const idToken = await firebaseUser.getIdToken();
+        setToken(idToken);
+      } else {
+        setUser(null);
+        setToken(null);
+      }
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  return { user, token, loading };
+};
+
+
+
+// ---------------------- 🏆 Main Page ----------------------
 export default function CompetitorsPage() {
   const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState<SortOption>("rating");
-  const [selectedCompetitor, setSelectedCompetitor] =
-    useState<Competitor | null>(null);
+  const [selectedCompetitor, setSelectedCompetitor] = useState<Competitor | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [competitors, setCompetitors] = useState<Competitor[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isAddingCompetitor, setIsAddingCompetitor] = useState(false);
 
-  // Filter states
-  const [brandPositioningFilters, setBrandPositioningFilters] = useState<
-    string[]
-  >([]);
+  // FILTER STATES
+  const [brandPositioningFilters, setBrandPositioningFilters] = useState<string[]>([]);
   const [minRating, setMinRating] = useState(0);
-  const [promotionFrequencyFilters, setPromotionFrequencyFilters] = useState<
-    string[]
-  >([]);
+  const [promotionFrequencyFilters, setPromotionFrequencyFilters] = useState<string[]>([]);
 
-  // Fetch competitors from API
+  // USER + TOKEN
+  const { user, token, loading: authLoading } = useCurrentUser();
+
+  // ⭐ ⭐ ⭐ FIX: stable token ⭐ ⭐ ⭐
+  const [stableToken, setStableToken] = useState<string | null>(null);
+
   useEffect(() => {
+    if (!authLoading && token) {
+      console.log("🔐 Stable token ready:", token);
+      setStableToken(token);
+    }
+  }, [authLoading, token]);
+
+
+  // ---------------------- 📥 Fetch competitors ----------------------
+  useEffect(() => {
+    if (!stableToken) return;
+
     const fetchCompetitors = async () => {
       try {
         setIsLoading(true);
-        const response = await fetch("/api/competitors");
 
-        if (!response.ok) {
-          throw new Error("Failed to fetch competitors");
-        }
+        const response = await fetch("/api/competitors", {
+          headers: { Authorization: `Bearer ${stableToken}` },
+        });
 
-        const result = await response.json();
-        if (result.success && result.data) {
-          setCompetitors(result.data);
-        }
+        if (!response.ok) return;
+
+        const data = await response.json();
+        if (data.success && data.data) setCompetitors(data.data);
       } catch (error) {
         console.error("Error fetching competitors:", error);
       } finally {
@@ -69,12 +112,65 @@ export default function CompetitorsPage() {
     };
 
     fetchCompetitors();
-  }, []);
+  }, [stableToken]);
+
+
+  // ---------------------- ➕ FIXED Add Competitor ----------------------
+  const handleAddCompetitor = async (url: string) => {
+    if (authLoading) {
+      alert("Authenticating… please wait 1–2 seconds.");
+      return;
+    }
+
+    if (!user || !stableToken) {
+      alert("Token not ready. Try again in 1 second.");
+      return;
+    }
+
+    console.log("📤 SENDING TOKEN:", stableToken);
+
+    try {
+      setIsAddingCompetitor(true);
+      setIsLoading(true);
+      
+      const response = await fetch("/api/competitors/add", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${stableToken}`, // ALWAYS VALID NOW
+        },
+        body: JSON.stringify({ url }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) throw new Error(result.error);
+
+      // Refresh competitor list
+      const refresh = await fetch("/api/competitors", {
+        headers: { Authorization: `Bearer ${stableToken}` },
+      });
+
+      const refreshData = await refresh.json();
+      if (refreshData.success) setCompetitors(refreshData.data);
+
+      setShowAddModal(false);
+    } catch (error) {
+      console.error("Failed to add competitor:", error);
+      alert(error instanceof Error ? error.message : "Failed to add competitor");
+    } finally {
+      setIsAddingCompetitor(false);
+      setIsLoading(false);
+    }
+  };
+
+
+
+  // ---------------------- UI BELOW IS UNCHANGED ----------------------
 
   const filteredAndSortedCompetitors = useMemo(() => {
     let result = [...competitors];
 
-    // Search filter
     if (searchQuery) {
       result = result.filter(
         (c) =>
@@ -83,26 +179,22 @@ export default function CompetitorsPage() {
       );
     }
 
-    // Brand positioning filter
     if (brandPositioningFilters.length > 0) {
       result = result.filter((c) =>
         brandPositioningFilters.includes(c.brandPositioning)
       );
     }
 
-    // Min rating filter
     if (minRating > 0) {
       result = result.filter((c) => c.avgRating >= minRating);
     }
 
-    // Promotion frequency filter
     if (promotionFrequencyFilters.length > 0) {
       result = result.filter((c) =>
         promotionFrequencyFilters.includes(c.promotionFrequency)
       );
     }
 
-    // Sorting
     result.sort((a, b) => {
       switch (sortBy) {
         case "price-low":
@@ -119,9 +211,7 @@ export default function CompetitorsPage() {
           return b.avgRating - a.avgRating;
         case "promotion":
           const promoOrder = { high: 3, medium: 2, low: 1 };
-          return (
-            promoOrder[b.promotionFrequency] - promoOrder[a.promotionFrequency]
-          );
+          return promoOrder[b.promotionFrequency] - promoOrder[a.promotionFrequency];
         case "products":
           return b.trackedProducts - a.trackedProducts;
         default:
@@ -131,57 +221,18 @@ export default function CompetitorsPage() {
 
     return result;
   }, [
+    competitors,
     searchQuery,
     sortBy,
     brandPositioningFilters,
     minRating,
     promotionFrequencyFilters,
-    competitors,
   ]);
 
-  const handleAddCompetitor = async (url: string, sellerInfo?: any) => {
-    try {
-      setIsAddingCompetitor(true);
-
-      const response = await fetch("/api/competitors/add", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ url }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to add competitor");
-      }
-
-      const result = await response.json();
-
-      if (result.success) {
-        // Refresh competitors list
-        const fetchResponse = await fetch("/api/competitors");
-        if (fetchResponse.ok) {
-          const fetchResult = await fetchResponse.json();
-          if (fetchResult.success && fetchResult.data) {
-            setCompetitors(fetchResult.data);
-          }
-        }
-        setShowAddModal(false);
-      }
-    } catch (error) {
-      console.error("Failed to add competitor:", error);
-      alert(
-        error instanceof Error ? error.message : "Failed to add competitor"
-      );
-    } finally {
-      setIsAddingCompetitor(false);
-    }
-  };
 
   return (
     <div className="flex h-screen overflow-hidden">
-      {/* Filter Sidebar */}
+      {/* Filters Sidebar */}
       <FilterSidebar
         showFilters={showFilters}
         setShowFilters={setShowFilters}
@@ -195,50 +246,49 @@ export default function CompetitorsPage() {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Header */}
         <div className="border-b border-border bg-card p-6">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h1 className="text-3xl font-bold text-foreground">
-                Competitors
-              </h1>
+              <h1 className="text-3xl font-bold text-foreground">Competitors</h1>
               <p className="text-muted-foreground mt-1">
-                {isLoading
-                  ? "Loading..."
-                  : `${filteredAndSortedCompetitors.length} competitors tracked`}
+                {isLoading ? "Loading..." : `${filteredAndSortedCompetitors.length} competitors tracked`}
               </p>
             </div>
 
-            {/* View Mode Toggle */}
             <div className="flex gap-2">
+              {/* FIX: Block opening modal until token ready */}
               <Button
-                onClick={() => setShowAddModal(true)}
+                onClick={() => {
+                  if (!stableToken) {
+                    alert("Authenticating… try again");
+                    return;
+                  }
+                  setShowAddModal(true);
+                }}
                 size="sm"
                 className="gap-2"
               >
-                <Plus className="h-4 w-4" />
-                Add Competitor
+                <Plus className="h-4 w-4" /> Add Competitor
               </Button>
+
               <Button
                 variant={viewMode === "grid" ? "default" : "outline"}
                 size="sm"
                 onClick={() => setViewMode("grid")}
               >
-                <LayoutGrid className="h-4 w-4 mr-2" />
-                Grid
+                <LayoutGrid className="h-4 w-4 mr-2" /> Grid
               </Button>
+
               <Button
                 variant={viewMode === "table" ? "default" : "outline"}
                 size="sm"
                 onClick={() => setViewMode("table")}
               >
-                <List className="h-4 w-4 mr-2" />
-                Table
+                <List className="h-4 w-4 mr-2" /> Table
               </Button>
             </div>
           </div>
 
-          {/* Search and Sort Controls */}
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -250,13 +300,8 @@ export default function CompetitorsPage() {
               />
             </div>
 
-            <Button
-              variant="outline"
-              onClick={() => setShowFilters(!showFilters)}
-              className="lg:hidden"
-            >
-              <SlidersHorizontal className="h-4 w-4 mr-2" />
-              Filters
+            <Button variant="outline" onClick={() => setShowFilters(!showFilters)} className="lg:hidden">
+              <SlidersHorizontal className="h-4 w-4 mr-2" /> Filters
             </Button>
 
             <select
@@ -273,19 +318,15 @@ export default function CompetitorsPage() {
           </div>
         </div>
 
-        {/* Content Area */}
+        {/* Listing Area */}
         <div className="flex-1 overflow-auto p-6">
           {isLoading ? (
             <div className="flex flex-col items-center justify-center h-full text-center">
-              <p className="text-muted-foreground text-lg">
-                Loading competitors...
-              </p>
+              <p className="text-muted-foreground text-lg">Loading competitors...</p>
             </div>
           ) : filteredAndSortedCompetitors.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center">
-              <p className="text-muted-foreground text-lg">
-                No competitors found
-              </p>
+              <p className="text-muted-foreground text-lg">No competitors found</p>
               <p className="text-muted-foreground text-sm mt-2">
                 Try adjusting your filters or search query
               </p>
@@ -309,32 +350,26 @@ export default function CompetitorsPage() {
         </div>
       </div>
 
-      {/* Detail Modal */}
       {selectedCompetitor && (
         <CompetitorModal
           competitor={selectedCompetitor}
           onClose={() => setSelectedCompetitor(null)}
           onDelete={() => {
-            // Refresh competitors list
-            const fetchCompetitors = async () => {
-              try {
-                const response = await fetch("/api/competitors");
-                if (response.ok) {
-                  const result = await response.json();
-                  if (result.success && result.data) {
-                    setCompetitors(result.data);
-                  }
-                }
-              } catch (error) {
-                console.error("Error fetching competitors:", error);
-              }
+            if (!stableToken) return;
+
+            const refresh = async () => {
+              const response = await fetch("/api/competitors", {
+                headers: { Authorization: `Bearer ${stableToken}` },
+              });
+              const result = await response.json();
+              if (result.success) setCompetitors(result.data);
             };
-            fetchCompetitors();
+
+            refresh();
           }}
         />
       )}
 
-      {/* Add Competitor Modal */}
       <AddCompetitorModal
         isOpen={showAddModal}
         onClose={() => setShowAddModal(false)}

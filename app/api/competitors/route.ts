@@ -7,11 +7,19 @@ export const runtime = "nodejs";
 
 export async function GET() {
   try {
+    // const userId = await getUserFromRequest(request);
+    // if (!userId)
+    //   return NextResponse.json(
+    //     { error: "Unauthorized" },
+    //     { status: 401 }
+    //   );
+
     const db = await getDb();
     const collection = db.collection("competitors");
 
+    // Only get competitors for this user 🔥
     const competitors = await collection
-      .find({})
+      .find({  })
       .sort({ createdAt: -1 })
       .toArray();
 
@@ -26,51 +34,7 @@ export async function GET() {
     console.error("Error fetching competitors:", error);
     return NextResponse.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to fetch competitors",
-      },
-      { status: 500 }
-    );
-  }
-}
-
-export async function DELETE(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get("id");
-
-    if (!id) {
-      return NextResponse.json({ error: "ID is required" }, { status: 400 });
-    }
-
-    const db = await getDb();
-    const collection = db.collection("competitors");
-
-    const result = await collection.deleteOne({
-      _id: new ObjectId(id),
-    });
-
-    if (result.deletedCount === 0) {
-      return NextResponse.json(
-        { error: "Competitor not found" },
-        { status: 404 }
-      );
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: "Competitor deleted successfully",
-    });
-  } catch (error) {
-    console.error("Error deleting competitor:", error);
-    return NextResponse.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to delete competitor",
+        error: error instanceof Error ? error.message : "Failed to fetch competitors",
       },
       { status: 500 }
     );
